@@ -157,7 +157,58 @@ Both_Gates_Open := Gate1_Is_Open AND Gate2_Is_Open;
 Any_Gate_Moving := Gate1_Is_Moving OR Gate2_Is_Moving;
 
 (* ============================================================================ *)
-(* 双门延时控制逻辑 *)
+(* 命令逻辑处理 *)
+(* ============================================================================ *)
+
+(* 初始化清除所有输出命令 *)
+Open_Command_V1 := FALSE;
+Close_Command_V1 := FALSE;
+Open_Command_V2 := FALSE;
+Close_Command_V2 := FALSE;
+
+(* 只有在系统使能且检测到命令边沿时才处理 *)
+IF Enable THEN
+
+    (* 单门命令处理 *)
+    IF cmd_v1_edge AND NOT Dual_Open_Active AND NOT Dual_Close_Active THEN
+        IF Gate1_Is_Closed THEN
+            (* 门1关闭状态：发出开门命令 *)
+            Open_Command_V1 := TRUE;
+        ELSIF Gate1_Is_Open THEN
+            (* 门1开启状态：发出关门命令 *)
+            Close_Command_V1 := TRUE;
+        ELSIF Gate1_Is_Moving THEN
+            (* 门1运动状态：发出关门命令（停止并关闭） *)
+            Close_Command_V1 := TRUE;
+        ELSE
+            (* 未知状态：默认关门命令 *)
+            Close_Command_V1 := TRUE;
+        END_IF;
+    END_IF;
+
+    (* 双门命令处理 *)
+    IF cmd_v12_edge AND NOT Dual_Open_Active AND NOT Dual_Close_Active THEN
+        IF Both_Gates_Closed THEN
+            (* 两门全关状态：启动双门开启过程 *)
+            Dual_Open_Active := TRUE;
+            Dual_Open_Timer := T#0S;      (* 重置计时器 *)
+            Dual_Open_Delay_Done := FALSE;
+        ELSIF Both_Gates_Open THEN
+            (* 两门全开状态：启动双门关闭过程 *)
+            Dual_Close_Active := TRUE;
+            Dual_Close_Timer := T#0S;     (* 重置计时器 *)
+            Dual_Close_Delay_Done := FALSE;
+        ELSE
+            (* 混合状态或运动状态：立即两门关闭 *)
+            Close_Command_V1 := TRUE;
+            Close_Command_V2 := TRUE;
+        END_IF;
+    END_IF;
+
+END_IF;
+
+(* ============================================================================ *)
+(* 双门延时控制逻辑（在命令处理之后执行） *)
 (* ============================================================================ *)
 
 (* 双门开启过程控制 *)
@@ -210,59 +261,6 @@ IF Dual_Close_Active THEN
             Dual_Close_Delay_Done := FALSE;
         END_IF;
     END_IF;
-END_IF;
-
-(* ============================================================================ *)
-(* 命令逻辑处理 *)
-(* ============================================================================ *)
-
-(* 清除所有输出命令（如果不在延时控制过程中） *)
-IF NOT Dual_Open_Active AND NOT Dual_Close_Active THEN
-    Open_Command_V1 := FALSE;
-    Close_Command_V1 := FALSE;
-    Open_Command_V2 := FALSE;
-    Close_Command_V2 := FALSE;
-END_IF;
-
-(* 只有在系统使能且检测到命令边沿时才处理 *)
-IF Enable THEN
-
-    (* 单门命令处理 *)
-    IF cmd_v1_edge AND NOT Dual_Open_Active AND NOT Dual_Close_Active THEN
-        IF Gate1_Is_Closed THEN
-            (* 门1关闭状态：发出开门命令 *)
-            Open_Command_V1 := TRUE;
-        ELSIF Gate1_Is_Open THEN
-            (* 门1开启状态：发出关门命令 *)
-            Close_Command_V1 := TRUE;
-        ELSIF Gate1_Is_Moving THEN
-            (* 门1运动状态：发出关门命令（停止并关闭） *)
-            Close_Command_V1 := TRUE;
-        ELSE
-            (* 未知状态：默认关门命令 *)
-            Close_Command_V1 := TRUE;
-        END_IF;
-    END_IF;
-
-    (* 双门命令处理 *)
-    IF cmd_v12_edge AND NOT Dual_Open_Active AND NOT Dual_Close_Active THEN
-        IF Both_Gates_Closed THEN
-            (* 两门全关状态：启动双门开启过程 *)
-            Dual_Open_Active := TRUE;
-            Dual_Open_Timer := T#0S;      (* 重置计时器 *)
-            Dual_Open_Delay_Done := FALSE;
-        ELSIF Both_Gates_Open THEN
-            (* 两门全开状态：启动双门关闭过程 *)
-            Dual_Close_Active := TRUE;
-            Dual_Close_Timer := T#0S;     (* 重置计时器 *)
-            Dual_Close_Delay_Done := FALSE;
-        ELSE
-            (* 混合状态或运动状态：立即两门关闭 *)
-            Close_Command_V1 := TRUE;
-            Close_Command_V2 := TRUE;
-        END_IF;
-    END_IF;
-
 END_IF;
 
 (* ============================================================================ *)
