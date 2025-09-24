@@ -100,10 +100,9 @@ VAR
     Any_Gate_Moving     : BOOL;
 
     (* 双门延时控制 *)
-    Dual_Open_Timer       : TIME := T#0S;    (* 双门开启延时计时器 *)
-    Dual_Close_Timer      : TIME := T#0S;    (* 双门关闭延时计时器 *)
-    Gate_Delay_Time       : TIME := T#1S;    (* 门间延时1秒 *)
-    Scan_Time             : TIME := T#100MS; (* PLC扫描周期（假设100ms） *)
+    Dual_Open_Counter     : INT := 0;        (* 双门开启延时计数器 *)
+    Dual_Close_Counter    : INT := 0;        (* 双门关闭延时计数器 *)
+    Delay_Cycles          : INT := 1000;     (* 延时周期数：1000个周期 *)
 
     (* 双门命令状态 *)
     Dual_Open_Active      : BOOL;     (* 双门开启过程激活 *)
@@ -191,17 +190,13 @@ IF Enable THEN
         IF Both_Gates_Closed THEN
             (* 两门全关状态：启动双门开启过程 *)
             Dual_Open_Active := TRUE;
-            Dual_Open_Timer := T#0S;      (* 重置计时器 *)
+            Dual_Open_Counter := 0;       (* 重置计数器 *)
             Dual_Open_Delay_Done := FALSE;
         ELSIF Both_Gates_Open THEN
             (* 两门全开状态：启动双门关闭过程 *)
             Dual_Close_Active := TRUE;
-            Dual_Close_Timer := T#0S;     (* 重置计时器 *)
+            Dual_Close_Counter := 0;      (* 重置计数器 *)
             Dual_Close_Delay_Done := FALSE;
-        ELSE
-            (* 混合状态或运动状态：立即两门关闭 *)
-            Close_Command_V1 := TRUE;
-            Close_Command_V2 := TRUE;
         END_IF;
     END_IF;
 
@@ -216,9 +211,9 @@ IF Dual_Open_Active THEN
     (* 立即启动门1 *)
     Open_Command_V1 := TRUE;
 
-    (* 延时计时器递增 *)
-    IF Dual_Open_Timer < Gate_Delay_Time THEN
-        Dual_Open_Timer := Dual_Open_Timer + Scan_Time;
+    (* 延时计数器递增 *)
+    IF Dual_Open_Counter < Delay_Cycles THEN
+        Dual_Open_Counter := Dual_Open_Counter + 1;
         Dual_Open_Delay_Done := FALSE;
     ELSE
         Dual_Open_Delay_Done := TRUE;
@@ -232,7 +227,7 @@ IF Dual_Open_Active THEN
     (* 重置条件：没有双门命令信号时重置 *)
     IF NOT cmd_v12_combined THEN
         Dual_Open_Active := FALSE;
-        Dual_Open_Timer := T#0S;
+        Dual_Open_Counter := 0;
         Dual_Open_Delay_Done := FALSE;
     END_IF;
 END_IF;
@@ -242,9 +237,9 @@ IF Dual_Close_Active THEN
     (* 立即启动门2 *)
     Close_Command_V2 := TRUE;
 
-    (* 延时计时器递增 *)
-    IF Dual_Close_Timer < Gate_Delay_Time THEN
-        Dual_Close_Timer := Dual_Close_Timer + Scan_Time;
+    (* 延时计数器递增 *)
+    IF Dual_Close_Counter < Delay_Cycles THEN
+        Dual_Close_Counter := Dual_Close_Counter + 1;
         Dual_Close_Delay_Done := FALSE;
     ELSE
         Dual_Close_Delay_Done := TRUE;
@@ -258,7 +253,7 @@ IF Dual_Close_Active THEN
     (* 重置条件：没有双门命令信号时重置 *)
     IF NOT cmd_v12_combined THEN
         Dual_Close_Active := FALSE;
-        Dual_Close_Timer := T#0S;
+        Dual_Close_Counter := 0;
         Dual_Close_Delay_Done := FALSE;
     END_IF;
 END_IF;
