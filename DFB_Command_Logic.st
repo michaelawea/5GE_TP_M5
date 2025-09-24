@@ -13,10 +13,7 @@ DFB: DB_Command_Logic - 命令逻辑转换模块
 
 输入参数：
 - cmd_v1_tele_digi: 遥控/键盘命令信号
-- Gate_Status_Open: 门板开启状态
-- Gate_Status_Closed: 门板关闭状态
-- Gate_Status_Opening: 门板正在开启状态
-- Gate_Status_Closing: 门板正在关闭状态
+- Gate_State: 门板状态（0=关闭，1=开启中，2=开启，3=关闭中）
 
 输出参数：
 - Open_Command: 开门命令输出
@@ -33,10 +30,7 @@ FUNCTION_BLOCK DB_Command_Logic
 VAR_INPUT
     Enable              : BOOL;     (* 使能信号 *)
     cmd_v1_tele_digi    : BOOL;     (* 遥控/键盘命令输入信号 *)
-    Gate_Status_Open    : BOOL;     (* 门板开启状态 *)
-    Gate_Status_Closed  : BOOL;     (* 门板关闭状态 *)
-    Gate_Status_Opening : BOOL;     (* 门板正在开启状态 *)
-    Gate_Status_Closing : BOOL;     (* 门板正在关闭状态 *)
+    Gate_State          : INT;      (* 门板状态：0=关闭，1=开启中，2=开启，3=关闭中 *)
 END_VAR
 
 VAR_OUTPUT
@@ -67,9 +61,10 @@ cmd_prev := cmd_v1_tele_digi;
 (* 门状态判断 *)
 (* ============================================================================ *)
 
-Gate_Is_Open := Gate_Status_Open;
-Gate_Is_Closed := Gate_Status_Closed;
-Gate_Is_Moving := Gate_Status_Opening OR Gate_Status_Closing;
+(* 根据Gate_State整型变量判断门的状态 *)
+Gate_Is_Closed := (Gate_State = 0);    (* 0=关闭 *)
+Gate_Is_Open := (Gate_State = 2);      (* 2=开启 *)
+Gate_Is_Moving := (Gate_State = 1) OR (Gate_State = 3);  (* 1=开启中，3=关闭中 *)
 
 (* ============================================================================ *)
 (* 命令逻辑处理 *)
