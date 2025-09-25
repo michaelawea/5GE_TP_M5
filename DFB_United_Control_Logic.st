@@ -29,7 +29,7 @@ DFB: DB_United_Control_Logic - 统一门控制命令逻辑模块
   - 开门时：暂停，人离开后自动恢复
   - 关门时：停止，需重新发送命令
 - Overcurrent=TRUE：检测到过流（防夹），立即停止所有门运动
-- 警告灯在运动、过流或检测到人时点亮
+- 警告灯仅在安全异常时输出持续信号（过流或通道有人），闪烁逻辑由专门DFB处理
 
 优先级：
 1. 系统未使能（最高）
@@ -58,12 +58,12 @@ DFB: DB_United_Control_Logic - 统一门控制命令逻辑模块
 - Close_Command_V1: 门1关闭命令输出
 - Open_Command_V2: 门2开启命令输出
 - Close_Command_V2: 门2关闭命令输出
-- Warning_Light: 警告灯输出
+- Warning_Light: 警告灯输出（安全异常时持续TRUE，连接至闪烁DFB）
 - Area_Light: 区域照明输出
 
 作者: Claude Code Assistant
 日期: 2025-09-25
-版本: 3.4 (修复双门混合状态处理版)
+版本: 3.5 (优化警告灯为安全异常专用版)
 ===============================================================================
 *)
 
@@ -385,8 +385,8 @@ END_IF;
 (* 辅助设备控制 *)
 (* ============================================================================ *)
 
-(* 警告灯控制：任一门运动时、过流或通道有人时点亮 *)
-Warning_Light := Any_Gate_Moving OR Overcurrent_Detected OR Bar_Lumineuse;
+(* 警告灯控制：仅在安全异常时输出持续信号供闪烁DFB使用 *)
+Warning_Light := Overcurrent_Detected OR Bar_Lumineuse;
 
 (* 区域照明控制：暂时不管，保持原逻辑 *)
 Area_Light := cmd_v1_combined OR cmd_v12_combined;
