@@ -7,6 +7,7 @@ DFB: DB_United_Control_Logic - 统一门控制命令逻辑模块
 - 处理遥控/键盘命令（cmd_v1_tele_digi, cmd_v12_tele_digi）
 - 处理对讲命令（cmd_v1_interphone, cmd_v12_interphone）
 - 根据Gate_Control DFB的状态输出相应的开关命令
+- 实现安全保护功能（通道检测、过流保护）
 - 控制辅助设备（警告灯、区域照明）
 
 控制逻辑：
@@ -16,13 +17,18 @@ DFB: DB_United_Control_Logic - 统一门控制命令逻辑模块
 - 门运动状态 + 单门命令 → 输出门1关闭命令
 
 双门模式（V12）：
-- 两门全关 + 双门命令 → 输出两门开启命令
-- 两门全开 + 双门命令 → 输出两门关闭命令
-- 混合/运动状态 + 双门命令 → 输出两门关闭命令
+- 两门全关 + 双门命令 → 输出两门开启命令（先门1后门2，延时1000周期）
+- 两门全开 + 双门命令 → 输出两门关闭命令（先门2后门1，延时1000周期）
 
-对讲模式：
-- cmd_v1_interphone：作用等同于cmd_v1_tele_digi
-- cmd_v12_interphone：作用等同于cmd_v12_tele_digi
+安全功能：
+- Bar_Lumineuse=TRUE：检测到通道有人，立即停止所有门运动
+- Overcurrent=TRUE：检测到过流（防夹），立即停止所有门运动
+- 安全停止时警告灯保持点亮
+
+优先级：
+1. 系统未使能（最高）
+2. 安全停止（Bar_Lumineuse或过流）
+3. 用户命令（最低）
 
 输入参数：
 - Enable: 系统使能信号
@@ -32,6 +38,9 @@ DFB: DB_United_Control_Logic - 统一门控制命令逻辑模块
 - cmd_v12_interphone: 双门对讲命令
 - Gate1_State: 门1状态（来自Gate_Control DFB）
 - Gate2_State: 门2状态（来自Gate_Control DFB）
+- Bar_Lumineuse: 通道传感器
+- Capt_Surintens_V1: 门1过流传感器
+- Capt_Surintens_V2: 门2过流传感器
 
 输出参数：
 - Open_Command_V1: 门1开启命令输出
@@ -42,8 +51,8 @@ DFB: DB_United_Control_Logic - 统一门控制命令逻辑模块
 - Area_Light: 区域照明输出
 
 作者: Claude Code Assistant
-日期: 2025-09-24
-版本: 2.0 (简化命令逻辑版)
+日期: 2025-09-25
+版本: 3.0 (增加安全保护功能版)
 ===============================================================================
 *)
 
@@ -61,6 +70,11 @@ VAR_INPUT
     (* 门状态输入（来自Gate_Control DFB） *)
     Gate1_State         : INT;      (* 门1状态：0=关闭，1=开启中，2=开启，3=关闭中 *)
     Gate2_State         : INT;      (* 门2状态 *)
+
+    (* 安全传感器输入 *)
+    Bar_Lumineuse       : BOOL;     (* 通道传感器：TRUE=检测到有人/物体在移动区域 *)
+    Capt_Surintens_V1   : BOOL;     (* 门1过流传感器：TRUE=门1电机过流 *)
+    Capt_Surintens_V2   : BOOL;     (* 门2过流传感器：TRUE=门2电机过流 *)
 END_VAR
 
 VAR_OUTPUT
@@ -111,6 +125,11 @@ VAR
     (* 延时完成标志 *)
     Dual_Open_Delay_Done  : BOOL;     (* 双门开启延时完成 *)
     Dual_Close_Delay_Done : BOOL;     (* 双门关闭延时完成 *)
+
+    (* 安全控制变量 *)
+    Movement_Blocked      : BOOL;     (* 移动被阻塞（通道有人） *)
+    Overcurrent_Detected  : BOOL;     (* 检测到过流 *)
+    Safety_Stop          : BOOL;     (* 安全停止标志 *)
 END_VAR
 
 (* ============================================================================ *)
@@ -156,6 +175,19 @@ Both_Gates_Open := Gate1_Is_Open AND Gate2_Is_Open;
 Any_Gate_Moving := Gate1_Is_Moving OR Gate2_Is_Moving;
 
 (* ============================================================================ *)
+(* 安全检测和处理（最高优先级） *)
+(* ============================================================================ *)
+
+(* 检测通道是否有人/物体 *)
+Movement_Blocked := Bar_Lumineuse;
+
+(* 检测过流（防夹/受阻） *)
+Overcurrent_Detected := Capt_Surintens_V1 OR Capt_Surintens_V2;
+
+(* 安全停止条件：通道有人或过流 *)
+Safety_Stop := Movement_Blocked OR Overcurrent_Detected;
+
+(* ============================================================================ *)
 (* 命令逻辑处理（死逻辑版本，无边沿检测） *)
 (* ============================================================================ *)
 
@@ -165,8 +197,8 @@ Close_Command_V1 := FALSE;
 Open_Command_V2 := FALSE;
 Close_Command_V2 := FALSE;
 
-(* 只有在系统使能时才处理 *)
-IF Enable THEN
+(* 只有在系统使能且没有安全停止时才处理 *)
+IF Enable AND NOT Safety_Stop THEN
 
     (* 单门命令处理（直接响应信号） *)
     IF cmd_v1_combined AND NOT Dual_Open_Active AND NOT Dual_Close_Active THEN
@@ -202,12 +234,23 @@ IF Enable THEN
 
 END_IF;
 
+(* 安全停止时立即停止所有正在进行的操作 *)
+IF Safety_Stop THEN
+    (* 重置所有双门控制状态 *)
+    Dual_Open_Active := FALSE;
+    Dual_Close_Active := FALSE;
+    Dual_Open_Counter := 0;
+    Dual_Close_Counter := 0;
+    Dual_Open_Delay_Done := FALSE;
+    Dual_Close_Delay_Done := FALSE;
+END_IF;
+
 (* ============================================================================ *)
 (* 双门延时控制逻辑（死逻辑版本） *)
 (* ============================================================================ *)
 
 (* 双门开启过程控制：门关状态先1后2 *)
-IF Dual_Open_Active THEN
+IF Dual_Open_Active AND NOT Safety_Stop THEN
     (* 立即启动门1 *)
     Open_Command_V1 := TRUE;
 
@@ -233,7 +276,7 @@ IF Dual_Open_Active THEN
 END_IF;
 
 (* 双门关闭过程控制：门开状态先2后1 *)
-IF Dual_Close_Active THEN
+IF Dual_Close_Active AND NOT Safety_Stop THEN
     (* 立即启动门2 *)
     Close_Command_V2 := TRUE;
 
@@ -262,22 +305,30 @@ END_IF;
 (* 辅助设备控制 *)
 (* ============================================================================ *)
 
-(* 警告灯控制：任一门运动时点亮 *)
-Warning_Light := Any_Gate_Moving;
+(* 警告灯控制：任一门运动时或有安全条件时点亮 *)
+Warning_Light := Any_Gate_Moving OR Safety_Stop;
 
-(* 区域照明控制：有命令时点亮（简化版，只输出1） *)
+(* 区域照明控制：暂时不管，保持原逻辑 *)
 Area_Light := cmd_v1_combined OR cmd_v12_combined;
 
 (* ============================================================================ *)
-(* 系统未使能时的安全处理 *)
+(* 系统未使能或安全停止时的最终处理 *)
 (* ============================================================================ *)
 
 IF NOT Enable THEN
+    (* 系统未使能时关闭所有输出 *)
     Open_Command_V1 := FALSE;
     Close_Command_V1 := FALSE;
     Open_Command_V2 := FALSE;
     Close_Command_V2 := FALSE;
     Warning_Light := FALSE;
+ELSIF Safety_Stop THEN
+    (* 安全停止时停止所有门命令但保持警告灯 *)
+    Open_Command_V1 := FALSE;
+    Close_Command_V1 := FALSE;
+    Open_Command_V2 := FALSE;
+    Close_Command_V2 := FALSE;
+    (* Warning_Light保持之前的逻辑：Safety_Stop时点亮 *)
 END_IF;
 
 END_FUNCTION_BLOCK
