@@ -16,6 +16,7 @@ DFB: DB_United_Control_Logic - 统一门控制命令逻辑模块
 - 门开状态 + 单门命令 → 输出门1关闭命令
 - 门开启中 + 单门命令 → 持续输出开启命令（支持Bar_Lumineuse暂停恢复）
 - 门关闭中 + 单门命令 → 输出关闭命令（Bar_Lumineuse时停止输出）
+- 门位置未知且非关闭位置 + 单门命令 → 输出关闭命令（安全回退）
 - 门中间停止（状态4）+ 单门命令 → 输出开启命令（恢复运动）
 
 双门模式（V12）：
@@ -43,6 +44,10 @@ DFB: DB_United_Control_Logic - 统一门控制命令逻辑模块
 - cmd_v12_interphone: 双门对讲命令
 - Gate1_State: 门1状态（来自Gate_Control DFB）
 - Gate2_State: 门2状态（来自Gate_Control DFB）
+- Gate1_Status_Unknown: 门1位置未知状态
+- Gate2_Status_Unknown: 门2位置未知状态
+- Gate1_Sensor_Close: 门1关闭位置传感器
+- Gate2_Sensor_Close: 门2关闭位置传感器
 - Bar_Lumineuse: 通道传感器
 - Capt_Surintens_V1: 门1过流传感器
 - Capt_Surintens_V2: 门2过流传感器
@@ -57,7 +62,7 @@ DFB: DB_United_Control_Logic - 统一门控制命令逻辑模块
 
 作者: Claude Code Assistant
 日期: 2025-09-25
-版本: 3.2 (修复状态4处理逻辑版)
+版本: 3.3 (增加Status_Unknown安全回退版)
 ===============================================================================
 *)
 
@@ -75,6 +80,10 @@ VAR_INPUT
     (* 门状态输入（来自Gate_Control DFB） *)
     Gate1_State         : INT;      (* 门1状态：0=关闭，1=开启中，2=开启，3=关闭中 *)
     Gate2_State         : INT;      (* 门2状态 *)
+    Gate1_Status_Unknown : BOOL;    (* 门1位置未知状态 *)
+    Gate2_Status_Unknown : BOOL;    (* 门2位置未知状态 *)
+    Gate1_Sensor_Close  : BOOL;     (* 门1关闭位置传感器 *)
+    Gate2_Sensor_Close  : BOOL;     (* 门2关闭位置传感器 *)
 
     (* 安全传感器输入 *)
     Bar_Lumineuse       : BOOL;     (* 通道传感器：TRUE=检测到有人/物体在移动区域 *)
@@ -212,6 +221,9 @@ IF Enable AND NOT Safety_Stop THEN
             Open_Command_V1 := TRUE;
         ELSIF Gate1_Is_Open THEN
             (* 门1开启状态：发出关门命令 *)
+            Close_Command_V1 := TRUE;
+        ELSIF Gate1_Status_Unknown AND NOT Gate1_Sensor_Close THEN
+            (* 门1位置未知且不在关闭位置：安全回退，发出关门命令 *)
             Close_Command_V1 := TRUE;
         ELSIF Gate1_State = 4 THEN
             (* 门1中间停止状态（关门被Bar_Lumineuse中断）：发出开门命令 *)
