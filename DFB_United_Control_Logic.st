@@ -22,6 +22,7 @@ DFB: DB_United_Control_Logic - 统一门控制命令逻辑模块
 双门模式（V12）：
 - 两门全关 + 双门命令 → 输出两门开启命令（先门1后门2，延时1000周期）
 - 两门全开 + 双门命令 → 输出两门关闭命令（先门2后门1，延时1000周期）
+- 混合状态 + 双门命令 → 单独处理每门状态（支持状态4、Status_Unknown等）
 
 安全功能：
 - Bar_Lumineuse=TRUE：传递给Gate_Control处理
@@ -62,7 +63,7 @@ DFB: DB_United_Control_Logic - 统一门控制命令逻辑模块
 
 作者: Claude Code Assistant
 日期: 2025-09-25
-版本: 3.3 (增加Status_Unknown安全回退版)
+版本: 3.4 (修复双门混合状态处理版)
 ===============================================================================
 *)
 
@@ -260,6 +261,54 @@ IF Enable AND NOT Safety_Stop THEN
             Dual_Close_Active := TRUE;
             Dual_Close_Counter := 0;      (* 重置计数器 *)
             Dual_Close_Delay_Done := FALSE;
+        ELSE
+            (* 混合状态处理：单独处理每个门的状态 *)
+
+            (* 处理门1 *)
+            IF Gate1_Is_Closed THEN
+                Open_Command_V1 := TRUE;
+            ELSIF Gate1_Is_Open THEN
+                Close_Command_V1 := TRUE;
+            ELSIF Gate1_Status_Unknown AND NOT Gate1_Sensor_Close THEN
+                Close_Command_V1 := TRUE;
+            ELSIF Gate1_State = 4 THEN
+                Open_Command_V1 := TRUE;
+            ELSIF Gate1_Is_Moving THEN
+                IF Gate1_State = 1 THEN
+                    Open_Command_V1 := TRUE;
+                ELSIF Gate1_State = 3 THEN
+                    IF NOT Bar_Lumineuse THEN
+                        Close_Command_V1 := TRUE;
+                    END_IF;
+                ELSE
+                    Close_Command_V1 := TRUE;
+                END_IF;
+            ELSE
+                Close_Command_V1 := TRUE;
+            END_IF;
+
+            (* 处理门2 *)
+            IF Gate2_Is_Closed THEN
+                Open_Command_V2 := TRUE;
+            ELSIF Gate2_Is_Open THEN
+                Close_Command_V2 := TRUE;
+            ELSIF Gate2_Status_Unknown AND NOT Gate2_Sensor_Close THEN
+                Close_Command_V2 := TRUE;
+            ELSIF Gate2_State = 4 THEN
+                Open_Command_V2 := TRUE;
+            ELSIF Gate2_Is_Moving THEN
+                IF Gate2_State = 1 THEN
+                    Open_Command_V2 := TRUE;
+                ELSIF Gate2_State = 3 THEN
+                    IF NOT Bar_Lumineuse THEN
+                        Close_Command_V2 := TRUE;
+                    END_IF;
+                ELSE
+                    Close_Command_V2 := TRUE;
+                END_IF;
+            ELSE
+                Close_Command_V2 := TRUE;
+            END_IF;
         END_IF;
     END_IF;
 
