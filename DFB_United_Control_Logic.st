@@ -21,14 +21,17 @@ DFB: DB_United_Control_Logic - 统一门控制命令逻辑模块
 - 两门全开 + 双门命令 → 输出两门关闭命令（先门2后门1，延时1000周期）
 
 安全功能：
-- Bar_Lumineuse=TRUE：检测到通道有人，立即停止所有门运动
+- Bar_Lumineuse=TRUE：传递给Gate_Control处理
+  - 开门时：暂停，人离开后自动恢复
+  - 关门时：停止，需重新发送命令
 - Overcurrent=TRUE：检测到过流（防夹），立即停止所有门运动
-- 安全停止时警告灯保持点亮
+- 警告灯在运动、过流或检测到人时点亮
 
 优先级：
 1. 系统未使能（最高）
-2. 安全停止（Bar_Lumineuse或过流）
+2. 过流保护（Safety_Stop）
 3. 用户命令（最低）
+注：Bar_Lumineuse由Gate_Control内部处理
 
 输入参数：
 - Enable: 系统使能信号
@@ -178,14 +181,14 @@ Any_Gate_Moving := Gate1_Is_Moving OR Gate2_Is_Moving;
 (* 安全检测和处理（最高优先级） *)
 (* ============================================================================ *)
 
-(* 检测通道是否有人/物体 *)
+(* 检测通道是否有人/物体 - 现在由Gate_Control直接处理 *)
 Movement_Blocked := Bar_Lumineuse;
 
 (* 检测过流（防夹/受阻） *)
 Overcurrent_Detected := Capt_Surintens_V1 OR Capt_Surintens_V2;
 
-(* 安全停止条件：通道有人或过流 *)
-Safety_Stop := Movement_Blocked OR Overcurrent_Detected;
+(* 安全停止条件：仅过流时停止（Bar_Lumineuse由Gate_Control处理） *)
+Safety_Stop := Overcurrent_Detected;
 
 (* ============================================================================ *)
 (* 命令逻辑处理（死逻辑版本，无边沿检测） *)
@@ -305,8 +308,8 @@ END_IF;
 (* 辅助设备控制 *)
 (* ============================================================================ *)
 
-(* 警告灯控制：任一门运动时或有安全条件时点亮 *)
-Warning_Light := Any_Gate_Moving OR Safety_Stop;
+(* 警告灯控制：任一门运动时、过流或通道有人时点亮 *)
+Warning_Light := Any_Gate_Moving OR Overcurrent_Detected OR Bar_Lumineuse;
 
 (* 区域照明控制：暂时不管，保持原逻辑 *)
 Area_Light := cmd_v1_combined OR cmd_v12_combined;
