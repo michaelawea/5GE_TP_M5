@@ -16,6 +16,7 @@ DFB: DB_United_Control_Logic - 统一门控制命令逻辑模块
 - 门开状态 + 单门命令 → 输出门1关闭命令
 - 门开启中 + 单门命令 → 持续输出开启命令（支持Bar_Lumineuse暂停恢复）
 - 门关闭中 + 单门命令 → 输出关闭命令（Bar_Lumineuse时停止输出）
+- 门中间停止（状态4）+ 单门命令 → 输出开启命令（恢复运动）
 
 双门模式（V12）：
 - 两门全关 + 双门命令 → 输出两门开启命令（先门1后门2，延时1000周期）
@@ -56,7 +57,7 @@ DFB: DB_United_Control_Logic - 统一门控制命令逻辑模块
 
 作者: Claude Code Assistant
 日期: 2025-09-25
-版本: 3.1 (修复Bar_Lumineuse响应逻辑版)
+版本: 3.2 (修复状态4处理逻辑版)
 ===============================================================================
 *)
 
@@ -176,7 +177,7 @@ Gate2_Is_Moving := (Gate2_State = 1) OR (Gate2_State = 3);  (* 1=开启中，3=�
 (* 双门组合状态 *)
 Both_Gates_Closed := Gate1_Is_Closed AND Gate2_Is_Closed;
 Both_Gates_Open := Gate1_Is_Open AND Gate2_Is_Open;
-Any_Gate_Moving := Gate1_Is_Moving OR Gate2_Is_Moving;
+Any_Gate_Moving := Gate1_Is_Moving OR Gate2_Is_Moving OR (Gate1_State = 4) OR (Gate2_State = 4);
 
 (* ============================================================================ *)
 (* 安全检测和处理（最高优先级） *)
@@ -212,6 +213,9 @@ IF Enable AND NOT Safety_Stop THEN
         ELSIF Gate1_Is_Open THEN
             (* 门1开启状态：发出关门命令 *)
             Close_Command_V1 := TRUE;
+        ELSIF Gate1_State = 4 THEN
+            (* 门1中间停止状态（关门被Bar_Lumineuse中断）：发出开门命令 *)
+            Open_Command_V1 := TRUE;
         ELSIF Gate1_Is_Moving THEN
             (* 门1运动状态的智能处理 *)
             IF Gate1_State = 1 THEN
@@ -227,7 +231,7 @@ IF Enable AND NOT Safety_Stop THEN
                 Close_Command_V1 := TRUE;
             END_IF;
         ELSE
-            (* 未知状态：默认关门命令 *)
+            (* 真正的未知状态：默认关门命令 *)
             Close_Command_V1 := TRUE;
         END_IF;
     END_IF;
