@@ -69,6 +69,7 @@ VAR_OUTPUT
     Status_Unknown  : BOOL;     (* 位置未知状态 *)
     Error           : BOOL;     (* 故障指示 *)
     Error_Code      : INT;      (* 故障代码 *)
+    Gate_State_Out  : INT;      (* 调试：当前状态输出 *)
 END_VAR
 
 VAR
@@ -262,21 +263,30 @@ CASE Gate_State OF
 
 END_CASE;
 
+(* 输出当前状态用于调试 *)
+Gate_State_Out := Gate_State;
+
 (* ============================================================================ *)
 (* 系统未使能时的处理 *)
 (* ============================================================================ *)
 
 IF NOT Enable THEN
+    (* 系统未使能时停止所有电机 *)
     Motor_Open := FALSE;
     Motor_Close := FALSE;
     Status_Opening := FALSE;
     Status_Closing := FALSE;
 
-    (* 保持位置状态，但标记为未知 *)
+    (* 只有在未使能时才检查位置并设置为未知 *)
     IF NOT (Sensor_Open OR Sensor_Close) THEN
         Status_Unknown := TRUE;
         Status_Open := FALSE;
         Status_Closed := FALSE;
+    ELSE
+        (* 根据传感器设置正确状态 *)
+        Status_Open := Sensor_Open;
+        Status_Closed := Sensor_Close;
+        Status_Unknown := FALSE;
     END_IF;
 END_IF;
 

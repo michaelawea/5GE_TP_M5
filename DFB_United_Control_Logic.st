@@ -14,7 +14,8 @@ DFB: DB_United_Control_Logic - 统一门控制命令逻辑模块
 单门模式（V1）：
 - 门关状态 + 单门命令 → 输出门1开启命令
 - 门开状态 + 单门命令 → 输出门1关闭命令
-- 门运动状态 + 单门命令 → 输出门1关闭命令
+- 门开启中 + 单门命令 → 持续输出开启命令（支持Bar_Lumineuse暂停恢复）
+- 门关闭中 + 单门命令 → 输出关闭命令（Bar_Lumineuse时停止输出）
 
 双门模式（V12）：
 - 两门全关 + 双门命令 → 输出两门开启命令（先门1后门2，延时1000周期）
@@ -55,7 +56,7 @@ DFB: DB_United_Control_Logic - 统一门控制命令逻辑模块
 
 作者: Claude Code Assistant
 日期: 2025-09-25
-版本: 3.0 (增加安全保护功能版)
+版本: 3.1 (修复Bar_Lumineuse响应逻辑版)
 ===============================================================================
 *)
 
@@ -212,8 +213,19 @@ IF Enable AND NOT Safety_Stop THEN
             (* 门1开启状态：发出关门命令 *)
             Close_Command_V1 := TRUE;
         ELSIF Gate1_Is_Moving THEN
-            (* 门1运动状态：发出关门命令（停止并关闭） *)
-            Close_Command_V1 := TRUE;
+            (* 门1运动状态的智能处理 *)
+            IF Gate1_State = 1 THEN
+                (* 正在开启中：继续发送开门命令（即使Bar_Lumineuse阻塞） *)
+                Open_Command_V1 := TRUE;
+            ELSIF Gate1_State = 3 THEN
+                (* 正在关闭中：继续发送关门命令（除非Bar_Lumineuse阻塞） *)
+                IF NOT Bar_Lumineuse THEN
+                    Close_Command_V1 := TRUE;
+                END_IF;
+            ELSE
+                (* 其他运动状态：默认关门 *)
+                Close_Command_V1 := TRUE;
+            END_IF;
         ELSE
             (* 未知状态：默认关门命令 *)
             Close_Command_V1 := TRUE;
